@@ -1,0 +1,156 @@
+module matrix_key_design
+(
+	input				clk,  	
+	input				rst_n,
+
+	input		[3:0]	col_data,	
+	output	reg	[3:0]	row_data,	
+	
+	output		 		key_flag,  	
+	output	reg	[3:0]	key_value   
+);
+
+		
+reg [19:0]	cnt;	 
+always @(posedge clk or negedge rst_n)
+begin
+	if(!rst_n) 
+		cnt <= 0; 
+	else
+		cnt <= cnt+1'b1;
+end
+
+parameter	SCAN_IDLE	=	3'b000;
+parameter	SCAN_JITTER1=	3'b001;
+parameter	SCAN_COL0	=	3'b011;
+parameter	SCAN_COL1	=	3'b010;
+parameter	SCAN_COL2	=	3'b110;
+parameter	SCAN_COL3	=	3'b100;
+parameter	SCAN_READ	=	3'b101;
+parameter	SCAN_JITTER2=	3'b111;
+
+reg	[2:0]	current_state;	
+reg	[2:0]	next_state;   
+always@(posedge clk or negedge rst_n)
+begin
+	if(!rst_n)
+		current_state <= SCAN_IDLE;
+	else if(cnt == 20'hfffff)
+		current_state <= next_state;
+end
+
+always@*
+begin
+	case(current_state)
+	SCAN_IDLE	:	
+		if(col_data != 4'b1111)	next_state = SCAN_JITTER1;
+		else 					next_state = SCAN_IDLE; 
+	SCAN_JITTER1:	
+		if(col_data != 4'b1111)	next_state = SCAN_COL0; 
+		else 					next_state = SCAN_IDLE;			
+	SCAN_COL0	:	
+		if(col_data != 4'b1111)	next_state = SCAN_READ; 
+		else 					next_state = SCAN_COL1;			
+	SCAN_COL1	:	
+		if(col_data != 4'b1111)	next_state = SCAN_READ; 
+		else 					next_state = SCAN_COL2;			
+	SCAN_COL2	:	
+		if(col_data != 4'b1111) next_state = SCAN_READ; 
+		else 					next_state = SCAN_COL3;			
+	SCAN_COL3	:	
+		if(col_data != 4'b1111)	next_state = SCAN_READ; 
+		else 					next_state = SCAN_IDLE;			
+	SCAN_READ	:	
+		if(col_data != 4'b1111)	next_state = SCAN_JITTER2; 
+		else 					next_state = SCAN_IDLE;			
+	SCAN_JITTER2:	
+		if(col_data != 4'b1111)	next_state = SCAN_JITTER2; 
+		else 					next_state = SCAN_IDLE;		
+	endcase
+end
+
+reg [3:0]	col_data_r;  	
+reg [3:0]	row_data_r;  
+reg			key_flag_r0;
+always@(posedge clk or negedge rst_n)
+begin
+	if(!rst_n)
+		begin
+		row_data <= 4'b0000;
+		key_flag_r0 <= 0;
+		end
+	else if(cnt == 20'hfffff)
+		begin
+		case(next_state)
+		SCAN_IDLE	:	begin	
+						row_data <= 4'b0000;	
+						key_flag_r0 <= 0;	
+						end
+
+		SCAN_COL0	:	row_data <= 4'b1110;
+		SCAN_COL1	:	row_data <= 4'b1101;
+		SCAN_COL2	:	row_data <= 4'b1011;
+		SCAN_COL3	:	row_data <= 4'b0111;
+		SCAN_READ	:	begin
+						row_data_r <= row_data;
+						col_data_r <= col_data;
+						key_flag_r0 <= 1;
+						end	
+		default:;
+		endcase
+		end
+end
+
+always @(posedge clk or negedge rst_n)  		     
+begin
+	if(!rst_n)
+		key_value <= 0;
+	else if(cnt == 20'hfffff)
+		begin
+		if(key_flag_r0 == 1'b1) 		
+			begin
+			case ({row_data_r,col_data_r})
+			8'b0111_0111:	key_value <= 4'hA;
+			8'b0111_1011:	key_value <= 4'h3;
+			8'b0111_1101:	key_value <= 4'h2;
+			8'b0111_1110:	key_value <= 4'h1;
+										 
+			8'b1011_0111:	key_value <= 4'hB;
+			8'b1011_1011:	key_value <= 4'h6;
+			8'b1011_1101:	key_value <= 4'h5;
+			8'b1011_1110:	key_value <= 4'h4;
+										 
+			8'b1101_0111:	key_value <= 4'hC;
+			8'b1101_1011:	key_value <= 4'h9;
+			8'b1101_1101:	key_value <= 4'h8;
+			8'b1101_1110:	key_value <= 4'h7;
+										 
+			8'b1110_0111:	key_value <= 4'hD;
+			8'b1110_1011:	key_value <= 4'hE;
+			8'b1110_1101:	key_value <= 4'h0;
+			8'b1110_1110:	key_value <= 4'hF;
+			default		:	key_value <= key_value;	    
+			endcase
+			end 
+		else
+			key_value <= key_value;
+	end   
+end 
+reg	key_flag_r2,key_flag_r1;
+always@(posedge clk or negedge rst_n)
+begin
+	if(!rst_n)	
+		begin
+		key_flag_r1 <= 0;
+		key_flag_r2 <= 0;
+		end
+	else		
+		begin
+		key_flag_r1 <= key_flag_r0;
+		key_flag_r2 <= key_flag_r1;
+		end
+end
+assign	key_flag = key_flag_r2 & ~key_flag_r1;
+      
+endmodule
+ 
